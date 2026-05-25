@@ -30,7 +30,7 @@ All four models see the **same pixels** (geometry applied once in the DataLoader
 | `LightningModel` | `distill/lightning_module.py` | Training harness. Runs `_step` for train/val, aggregates per-teacher losses, owns AdamW + cosine LR schedule. |
 | `Student` | `distill/models/student.py` | DINOv2 ViT-B/14-reg backbone (86.6 M params) + one MLP projection head per teacher. Outputs `{summary, features}` projected into each teacher's embedding space. |
 | `MLP` | `distill/models/heads.py` | 2-layer GELU MLP (`768 → teacher_dim`). Applied to **both** the CLS token (summary) and all 256 patch tokens (spatial features). |
-| `Teacher` (ABC) | `distill/models/teachers.py` | Frozen base. Applies per-model normalisation, calls `forward_features`, then **standardises** outputs (zero-mean / unit-var per channel) — the AM-RADIO step that makes cosine loss well-scaled across teachers with different activation ranges. |
+| `Teacher` (ABC) | `distill/models/teachers.py` | Frozen base. Applies per-model normalisation, calls `forward_features`, then **standardises** outputs (zero-mean / unit-var per channel) (the AM-RADIO step that makes cosine loss well-scaled across teachers with different activation ranges). |
 | `UNI2` | `distill/models/teachers.py` | UNI2-h via timm. `embed_dim=1536`, 8 register tokens → patches at `out[:, 9:]`. |
 | `Virchow2` | `distill/models/teachers.py` | Virchow2 via timm. `embed_dim=1280`, 4 register tokens → patches at `out[:, 5:]`. |
 | `HOptimus1` | `distill/models/teachers.py` | H-optimus-1 via timm. `embed_dim=1536`, 4 register tokens → patches at `out[:, 5:]`. Custom colour stats. |
