@@ -1,6 +1,6 @@
 # patho-distill
 
-Multi-teacher knowledge distillation for pathology foundation models. A single compact student is trained to simultaneously match three large frozen pathology experts — no labels required.
+Multi-teacher knowledge distillation for pathology foundation models. A single compact student is trained to simultaneously match three large frozen pathology experts.
 
 ---
 
