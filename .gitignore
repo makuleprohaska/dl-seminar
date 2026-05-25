@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Env
+.env
+*.env
+.venv/
+venv/
+
+# Training artefacts
+checkpoints/
+logs/
+wandb/
+*.ckpt
+*.pth
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Test / coverage artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Local data (never commit raw shards)
+data/
+*.tar
+
+# Never push
+HANDOFF.md
