@@ -1,0 +1,27 @@
+# Backbone override for evaluating our distilled student with Kaiko `eva`.
+#
+# Used as the SECOND --config on the eva CLI, after a shipped dataset config:
+#
+#   eva predict_fit \
+#     --config <eva>/configs/vision/pathology/offline/classification/bach.yaml \
+#     --config configs/eva/student_backbone.yaml
+#
+# It only replaces `model.backbone`; everything else (dataset, probe head,
+# trainer, metrics) comes from the shipped dataset config. `benchmark/run_eva.py`
+# wires this up and sets the env vars below.
+#
+# Normalization note: eva normalizes pixels in its own dataloader with the
+# ImageNet stats our student also trains on (eva's NORMALIZE_MEAN/STD defaults),
+# so the wrapper does NOT re-normalize (normalize=false). Keep eva's defaults.
+#
+# Set IN_FEATURES=768 (student CLS dim) so the probe head matches.
+model:
+  backbone:
+    class_path: eva.vision.models.wrappers.ModelFromFunction
+    init_args:
+      path: distill.eval.student_backbone.load_student_backbone
+      arguments:
+        checkpoint_path: ${oc.env:CHECKPOINT_PATH,null}
+        normalize: false
+      # Our factory loads the checkpoint itself; don't let the wrapper also try.
+      checkpoint_path: null

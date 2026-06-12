@@ -36,6 +36,16 @@ def main():
     )
     callbacks = [ckpt_cb, LearningRateMonitor(logging_interval="step")]
 
+    # Optional online benchmark: a cheap linear probe every N steps for a
+    # learning-curve signal during training. Needs a small labeled (image, label)
+    # probe set. Disabled by default; uncomment and supply loaders to enable.
+    #
+    # from distill.eval.online_eval import OnlineProbeCallback
+    # callbacks.append(OnlineProbeCallback(
+    #     train_loader=probe_train_loader, val_loader=probe_val_loader,
+    #     every_n_steps=1000, num_classes=4, max_batches=8, name="bach",
+    # ))
+
     trainer = pl.Trainer(
         max_steps=config.MAX_STEPS,
         val_check_interval=config.VAL_CHECK_INTERVAL,
