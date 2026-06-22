@@ -1,3 +1,5 @@
+import os
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
@@ -59,7 +61,13 @@ def main():
         callbacks=callbacks,
         logger=CSVLogger(save_dir="logs", name="patho-distill"),
     )
-    trainer.fit(model, train_loader, val_loader)
+    # Auto-resume: if a previous run left a checkpoint, continue from it. Essential
+    # for long unattended runs that may be interrupted (reboot, preemption, SSH drop).
+    last_ckpt = os.path.join(config.CKPT_DIR, "last.ckpt")
+    resume_from = last_ckpt if os.path.exists(last_ckpt) else None
+    if resume_from:
+        print(f"Resuming from checkpoint: {resume_from}")
+    trainer.fit(model, train_loader, val_loader, ckpt_path=resume_from)
 
 
 if __name__ == "__main__":

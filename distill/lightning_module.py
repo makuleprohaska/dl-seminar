@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import pytorch_lightning as pl
 import torch
@@ -26,6 +27,15 @@ class LightningModel(pl.LightningModule):
         self.teachers = nn.ModuleDict(teachers)
         teacher_dims = {n: t.embedding_dim for n, t in self.teachers.items()}
         self.student = student if student is not None else Student(teacher_dims)
+        # Optional torch.compile (COMPILE_MODELS=1). The frozen teachers dominate
+        # compute, so compiling them is the main win; suppress_errors makes any
+        # compile failure fall back to eager rather than crash an unattended run.
+        if os.environ.get("COMPILE_MODELS") == "1":
+            import torch._dynamo
+            torch._dynamo.config.suppress_errors = True
+            for n in list(self.teachers.keys()):
+                self.teachers[n] = torch.compile(self.teachers[n])
+            self.student = torch.compile(self.student)
         self.lr = lr
         self.weight_decay = weight_decay
         self.w_summary = w_summary
