@@ -17,7 +17,7 @@
 # Set IN_FEATURES=768 (student CLS dim) so the probe head matches.
 model:
   backbone:
-    class_path: eva.vision.models.wrappers.ModelFromFunction
+    class_path: eva.core.models.wrappers.ModelFromFunction
     init_args:
       path: distill.eval.student_backbone.load_student_backbone
       arguments:
