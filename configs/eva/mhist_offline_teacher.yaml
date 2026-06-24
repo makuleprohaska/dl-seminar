@@ -1,5 +1,5 @@
 ---
-# Self-contained eva offline MHIST config for a frozen TEACHER (set TEACHER_NAME).
+# Self-contained eva offline MHIST config (2-class) for a frozen TEACHER (set TEACHER_NAME).
 # Adapted from eva 0.4.5 configs/vision/pathology/offline/classification/bach.yaml,
 # with ONE change: the ClassificationEmbeddingsWriter backbone is swapped from
 # eva's ModelFromRegistry to our ModelFromFunction (load_student_backbone), so no
@@ -26,7 +26,7 @@ trainer:
           filename: best
           save_last: ${oc.env:SAVE_LAST, false}
           save_top_k: 1
-          monitor: &MONITOR_METRIC ${oc.env:MONITOR_METRIC, val/BinaryBalancedAccuracy}
+          monitor: &MONITOR_METRIC ${oc.env:MONITOR_METRIC, val/MulticlassAccuracy}
           mode: &MONITOR_METRIC_MODE ${oc.env:MONITOR_METRIC_MODE, max}
       - class_path: lightning.pytorch.callbacks.EarlyStopping
         init_args:
@@ -59,8 +59,8 @@ model:
       class_path: torch.nn.Linear
       init_args:
         in_features: ${oc.env:IN_FEATURES, 768}
-        out_features: &NUM_CLASSES 1
-    criterion: torch.nn.BCEWithLogitsLoss
+        out_features: &NUM_CLASSES 2
+    criterion: torch.nn.CrossEntropyLoss
     optimizer:
       class_path: torch.optim.AdamW
       init_args:
@@ -68,7 +68,9 @@ model:
     metrics:
       common:
         - class_path: eva.metrics.AverageLoss
-        - class_path: eva.metrics.BinaryClassificationMetrics
+        - class_path: eva.metrics.MulticlassClassificationMetrics
+          init_args:
+            num_classes: *NUM_CLASSES
 data:
   class_path: eva.DataModule
   init_args:
