@@ -49,7 +49,7 @@
 \begin{center}
 {\LARGE\bfseries From Many Experts to One}\\[2pt]
 {\large Agglomerative Multi-Teacher Knowledge Distillation}\\[3pt]
-{\small DL-Seminar handout \;\textbar\; case study: \texttt{patho-distill} — distilling pathology foundation models}
+{\small Marko Prohaska \;\textbar\; Supervisor: Christian Brechenmacher \;\textbar\; 01.07.2026}
 \end{center}
 \vspace{-3pt}\hrule\vspace{4pt}
 
@@ -66,7 +66,7 @@ here—UNI2-h~\cite{uni}, Virchow2~\cite{virchow2}, and H-optimus-1~\cite{hoptim
 Transformers (ViTs) with $0.6$--$1.1$\,B parameters, and they are a deliberate selection from a
 larger and growing pool. Because these encoders differ in their pre-training data and training
 recipes, their representations are not interchangeable: measured performance varies systematically
-across tissue types and downstream tasks~\cite[Fig.~1]{pathryoshka}.
+across tissue types and downstream tasks~\cite{pathryoshka}.
 
 % =====================  OBJECTIVE  =====================
 \section{Objective}
@@ -81,11 +81,18 @@ ones~\cite{hinton,radio}.
 \section{Data}
 
 The distillation targets are the teachers' own embeddings rather than human labels, so the
-procedure requires only raw image tiles~\cite{radio}; in pathology, unlabelled tissue tiles are
-available at very large scale, as the teachers' own pre-training corpora illustrate
-(${>}200$\,M tiles for UNI2-h)~\cite{uni}. We stream ${\sim}248$\,GB of unlabelled H\&E tiles
-(51 WebDataset shards, $256\times256$\,px, cropped to $224\times224$) directly from object storage,
-holding out one shard for validation.
+procedure requires only raw image tiles~\cite{radio}. The tiles are drawn from The Cancer Genome
+Atlas (TCGA): we sampled uniformly at random from the full cohort of $11{,}766$ H\&E whole-slide
+images, yielding $51$ WebDataset shards of $131{,}072$ tiles each, i.e. ${\approx}6.7$\,M
+unlabelled tiles (${\sim}248$\,GB, $256\times256$\,px). Shards are streamed from object storage,
+with one held out for validation. At training time each tile is augmented by a random
+$224\times224$ crop and a random horizontal flip; validation applies a deterministic centre crop.
+The augmentation is applied once per tile in the data loader, upstream of the per-encoder
+normalisation, so the student and all teachers receive the identical crop. At ${\approx}6.7$\,M
+tiles this corpus is small relative to the teachers' own pre-training (${>}200$\,M tiles for
+UNI2-h~\cite{uni}); its size was bounded by available cluster storage and compute, and we expect
+it—rather than the distillation objective—to be the principal limit on the student's attainable
+representation quality.
 
 % =====================  METHODOLOGY  =====================
 \section{Methodology}
@@ -101,8 +108,8 @@ single student encoder. Three design considerations follow; they are the transfe
 \item \textbf{Teachers produce embeddings of different dimensionality.} UNI2-h and H-optimus-1
 emit 1536-d vectors, Virchow2 1280-d, while the student is 768-d. The student therefore carries
 \textbf{one small projection head (MLP) per teacher} that maps its 768-d features to that teacher's
-dimension. The shared backbone learns a single union representation; each head reads off a
-teacher-specific view of it.
+dimension. The same head projects both the \texttt{CLS} summary and the patch tokens. The shared
+backbone learns a single union representation; each head reads off a teacher-specific view of it.
 
 \item \textbf{Global and local structure are matched separately.} A ViT emits a \texttt{CLS}
 token, which provides a global summary of the analysed image, alongside one token per image patch
@@ -195,35 +202,37 @@ bf16 is emulated and substantially slower, so fp16 is the appropriate setting. T
 % =====================  RESULTS  =====================
 \section{Results}
 
-We assess representation quality by \emph{linear probing} with Kaiko \texttt{eva}~\cite{eva}: the
-student is frozen, its embeddings are extracted, and a linear classifier is trained on a labelled
-task — here BACH (4-class breast histology)~\cite{bach}. The same protocol is applied to each
-teacher for comparison. We report accuracy as mean $\pm$ standard deviation over five probe runs,
-with the best result in bold.
+We assess representation quality with Kaiko \texttt{eva}~\cite{eva}, freezing each encoder and
+training a lightweight task head on its embeddings. Three downstream tasks are used: BACH (4-class
+breast histology)~\cite{bach} and MHIST (2-class colorectal polyp classification)~\cite{mhist}
+linear-probe the \texttt{CLS} embedding, while CAMELYON16~\cite{camelyon16} (slide-level lymph-node
+metastasis detection) aggregates the patch-token embeddings via attention-based multiple-instance
+learning. The same protocol is applied to each teacher for comparison. We report accuracy as mean
+$\pm$ standard deviation over five runs, with the best result in bold.
 
-\whybox{\textbf{Results in progress.} The final BACH readings for the student's last checkpoint and
-for all three teachers are still being computed under the identical \texttt{eva} protocol; the table
-below will be completed once they are available. We defer interpretation until then.}
+Given the limited training corpus and a student roughly an order of magnitude smaller than each
+teacher, we do not expect the student to surpass the strongest teacher on any single task; the
+question is whether one $86.6$\,M-parameter encoder stays competitive across tasks while replacing
+three billion-parameter forward passes with one. The CAMELYON16 reading is still being
+computed and is completed in the table once available.
 
 \begin{center}
-\begin{tabular}{lcc}
+\begin{tabular}{lcccc}
 \toprule
-Model & Params & BACH accuracy (\%) \\
+Model & Params & BACH (\%) & MHIST (\%) & CAMELYON16 (\%) \\
 \midrule
-UNI2-h~\cite{uni}        & 681\,M & TBD \\
-Virchow2~\cite{virchow2} & 632\,M & TBD \\
-H-optimus-1~\cite{hoptimus} & 1.1\,B & TBD \\
+UNI2-h~\cite{uni}        & 681\,M & \textbf{91.46 $\pm$ 0.29} & 82.47 $\pm$ 0.13 & TBD \\
+Virchow2~\cite{virchow2} & 632\,M & 88.00 $\pm$ 0.76 & \textbf{86.06 $\pm$ 0.24} & TBD \\
+H-optimus-1~\cite{hoptimus} & 1.1\,B & 78.07 $\pm$ 0.70 & 83.66 $\pm$ 0.32 & TBD \\
 \midrule
-Student (ours)           & 86.6\,M & TBD \\
+Student (ours)           & 86.6\,M & 86.54 $\pm$ 0.48 & 84.33 $\pm$ 0.08 & TBD \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-{\footnotesize\itshape BACH is a small 4-class task that probes only the \texttt{CLS} embedding and
-is excluded from the public \texttt{eva} leaderboard; the teachers are therefore benchmarked under
-the identical protocol rather than cited from the leaderboard. Dense and slide-level (MIL) tasks
-are not yet evaluated. A companion notebook (\texttt{demo.ipynb}) gives a self-contained, CPU-only
-reproduction of the loss and linear-probe pipeline.}
+{\footnotesize\itshape All encoders are benchmarked under the identical \texttt{eva} protocol, so
+student and teachers are directly comparable. A companion notebook (\texttt{demo.ipynb}) gives a
+self-contained, CPU-only reproduction of the loss and linear-probe pipeline.}
 
 % =====================  REFERENCES  =====================
 \vspace{2pt}\hrule\vspace{2pt}
@@ -241,8 +250,10 @@ reproduction of the loss and linear-probe pipeline.}
 \bibitem{adamw} Loshchilov, Hutter. Decoupled Weight Decay Regularization (AdamW). ICLR 2019.
 \bibitem{sgdr} Loshchilov, Hutter. SGDR: Stochastic Gradient Descent with Warm Restarts. ICLR 2017.
 \bibitem{amp} Micikevicius \emph{et al.}, Mixed Precision Training. ICLR 2018.
-\bibitem{eva} kaiko.ai, \texttt{eva} — an evaluation framework for pathology foundation models.
+\bibitem{eva} kaiko.ai, \texttt{eva} — an evaluation framework for pathology foundation models (https://github.com/kaiko-ai/eva) .
 \bibitem{bach} Aresta \emph{et al.}, BACH: Grand Challenge on Breast Cancer Histology Images. \emph{Medical Image Analysis} 56, 2019.
+\bibitem{mhist} Wei \emph{et al.}, A Petri Dish for Histopathology Image Analysis (MHIST). \emph{AIME} 2021.
+\bibitem{camelyon16} Ehteshami Bejnordi \emph{et al.}, Diagnostic Assessment of Deep Learning Algorithms for Detection of Lymph Node Metastases in Women With Breast Cancer (CAMELYON16). \emph{JAMA} 318(22), 2017.
 \bibitem{pathryoshka} Grashei \emph{et al.}, Pathryoshka: Compressing Pathology Foundation Models via Multi-Teacher Knowledge Distillation with Nested Embeddings. arXiv:2511.23204, 2025.
 \end{thebibliography}}
 
