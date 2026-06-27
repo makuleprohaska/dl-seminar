@@ -86,50 +86,59 @@ Both weights default to 1.0 (`distill/config.py`).
 
 ## Benchmarking
 
-Downstream quality is measured with **[Kaiko `eva`](https://kaiko-ai.github.io/eva/)** — the
-standard linear-probe protocol behind the [pathology leaderboard](https://github.com/kaiko-ai/eva#-leaderboards),
-so our numbers are directly comparable to other foundation models.
+Downstream quality is measured with **[Kaiko `eva`](https://kaiko-ai.github.io/eva/) 0.4.5**: every
+model — the student **and** all three teachers — runs through eva's stock offline-classification
+configs end-to-end via `eva predict_fit` (eva's linear-probe protocol, `n_runs=5`), so the numbers
+are directly comparable across models and to published leaderboards.
+
+### Results (eva stock config, `n_runs=5`)
+
+| Model | Params | BACH (mc acc) | MHIST (bal acc) | CAMELYON16 |
+|---|---|---|---|---|
+| UNI2-h | 681 M | **91.46 ± 0.29** | 82.27 ± 0.11 | 88.37 |
+| Virchow2 | 632 M | 88.00 ± 0.76 | **86.11 ± 0.05** | **96.12** |
+| H-optimus-1 | 1.1 B | 78.07 ± 0.70 | 83.79 ± 0.13 | 92.25 |
+| **Student (ours)** | 86.6 M | 85.16 ± 0.54 | 84.39 ± 0.04 | 93.80 |
+
+BACH and MHIST are patch-level linear probes (multiclass accuracy / binary balanced accuracy,
+averaged over 5 runs); CAMELYON16 is a single-fold slide-level ABMIL run. The student stays
+competitive across all three tasks — second on MHIST and CAMELYON16 — and surpasses the
+1.1 B-param H-optimus-1 on BACH and MHIST at 7–13× fewer parameters. Best per column in **bold**.
 
 ### What's evaluated
 
-`eva` freezes the backbone, caches its embeddings, then trains a small probe head per dataset.
-All four target datasets are **classification**, so eva uses the student's **CLS/summary
-embedding** (768-d) — not the patch tokens:
+`eva` freezes the backbone, embeds each dataset, then trains a small probe head:
 
-| Dataset | Task | Head | Metric | Auto-download |
-|---|---|---|---|---|
-| **BACH** | 4-class patch | Linear/MLP | accuracy | yes |
-| **MHIST** | binary patch | Linear/MLP | balanced accuracy | no (license form) |
-| **Camelyon16** | slide-level (MIL) | ABMIL | balanced accuracy | no (large) |
-| **PANDA-small** | slide-level (MIL) | ABMIL | balanced accuracy | no (large) |
+| Dataset | Task | Head | Metric |
+|---|---|---|---|
+| **BACH** | 4-class patch | Linear | multiclass accuracy |
+| **MHIST** | binary patch | Linear | binary balanced accuracy |
+| **CAMELYON16** | slide-level (MIL) | ABMIL | accuracy / AUROC |
 
-> The dense **patch-token** path (`StudentBackbone.forward_patches → [B,768,16,16]`) is implemented
-> too, for future segmentation tasks (MoNuSAC/CoNSeP/BCSS) — none of which are in the current set.
+Classification uses the student's **CLS/summary** embedding (768-d). The dense **patch-token** path
+(`StudentBackbone.forward_patches → [B,768,16,16]`) is implemented for future segmentation work.
 
 ### How it's wired
 
-- `distill/eval/student_backbone.py` — frozen feature extractor over the distilled DINOv2 backbone
-  (drops the per-teacher distillation heads). `load_student_backbone(checkpoint_path=...)` loads the
-  `student.model.*` weights from a training checkpoint. **It does not re-normalize**: eva normalizes
-  with the same ImageNet stats the student trains on.
-- `configs/eva/student_backbone.yaml` — backbone override; reuses eva's maintained dataset configs
-  for everything else.
-- `benchmark/run_eva.py` — sets the env vars (`IN_FEATURES=768`, `DATA_ROOT`, …) and runs
-  `eva predict_fit` per dataset, then prints a results summary.
+- **`distill/eval/eva_registry.py`** — registers the distilled student as `pathology/patho_distill`
+  in eva's backbone registry (plus a `pathology/bioptimus_h_optimus_1` entry, since eva ships
+  H-optimus-0), so eva's stock configs run against our model unchanged — the same registry mechanism
+  eva's own pathology backbones use (`backbone_registry.register("pathology/<name>")`).
+- **`distill/eval/student_backbone.py`** — frozen feature extractor over the distilled DINOv2
+  backbone (drops the per-teacher distillation heads); exposes the 768-d CLS embedding.
+- To let a pip-installed eva discover the loader, add `import distill.eval.eva_registry` to its
+  `…/backbones/pathology/__init__.py` and run with `PYTHONPATH=<repo root>`.
 
-### Running it (on the VM)
+### Running it (on the GPU VM)
 
 ```bash
-pip install kaiko-eva
-python benchmark/run_eva.py \
-    --checkpoint checkpoints/last.ckpt \
-    --datasets bach mhist camelyon16 panda_small \
-    --data-root ./data --download        # --download only helps BACH
+nohup bash scripts/run_eva_native.sh > logs/eva_native/all.log 2>&1 &
 ```
 
-> **Not yet validated end-to-end** — eva isn't installed locally, so the CLI/config integration
-> must be confirmed on the VM. The backbone wrapper and probe logic are unit-tested offline
-> (`tests/test_eva_backbone.py`). Use `--dry-run` to print the exact eva commands first.
+Per-model env: `MODEL_NAME=pathology/<name>`, `IN_FEATURES` (768 student / 1536 uni2 / 1280 virchow2
+/ 1536 hoptimus1). The gated teachers (UNI2-h, Virchow2) require `HF_TOKEN`; H-optimus uses its own
+image normalization (`NORMALIZE_MEAN`/`NORMALIZE_STD`, see `scripts/run_eva_hoptimus.sh`). The
+one-page method + results writeup is `presentation/handout.tex`.
 
 ### Optional: online benchmark during training
 
