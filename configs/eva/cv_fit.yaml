@@ -1,0 +1,105 @@
+---
+# eva FIT config for one cross-validation fold.
+#
+# Runs eva's OWN HeadModule + EmbeddingsClassificationDataset on PRE-EMBEDDED
+# features (frozen backbone -> embed once with eva predict, then CV the head).
+# The only departure from eva's stock offline classification config is the data
+# section: it reads `manifest_cv.csv` (produced by scripts/make_fold_manifest.py)
+# and selects which fold column is the train/val split via FOLD_COLUMN. eva
+# re-initializes the linear head for each run (clone + configure_model), so
+# looping FOLD_COLUMN=fold0..fold4 over five `eva fit` calls is genuine 5-fold CV
+# with the head retrained from scratch each fold.
+#
+# Per-fold launch (embeddings already cached; no re-embedding):
+#   export MODEL_NAME=pathology/patho_distill   # or a teacher registry name
+#   export IN_FEATURES=768                       # 768 student / 1536 uni2 / 1280 virchow2 / 1536 hoptimus1
+#   export NUM_CLASSES=4                         # BACH=4, MHIST=2
+#   export EMBEDDINGS_ROOT=data/embeddings_.../bach
+#   export FOLD_COLUMN=fold0
+#   cd eva/src && python3.12 -m eva fit --config $rootdir/configs/eva/cv_fit.yaml
+#
+# scripts/run_cv.sh drives the fold loop and aggregates mean +/- std.
+trainer:
+  class_path: eva.Trainer
+  init_args:
+    # Default 1: one fold per invocation; the 5-fold CV variance comes from the
+    # fold columns, not n_runs. Set N_RUNS=5 with FOLD_COLUMN=split to reproduce
+    # eva's published fixed-split protocol (seed-variance mean(std), as in the
+    # paper's Table 1 -- eva re-seeds + re-inits the head on the SAME split).
+    n_runs: ${oc.env:N_RUNS, 1}
+    default_root_dir: ${oc.env:OUTPUT_ROOT, logs/cv/${oc.env:MODEL_NAME, model}}/${oc.env:FOLD_COLUMN, fold0}
+    max_steps: ${oc.env:MAX_STEPS, 12500}
+    checkpoint_type: ${oc.env:CHECKPOINT_TYPE, best}
+    accelerator: ${oc.env:ACCELERATOR, auto}
+    devices: ${oc.env:NUM_DEVICES, 1}
+    callbacks:
+      - class_path: eva.callbacks.ConfigurationLogger
+      - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+        init_args:
+          refresh_rate: ${oc.env:TQDM_REFRESH_RATE, 1}
+      - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+        init_args:
+          logging_interval: epoch
+      - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+        init_args:
+          filename: best
+          save_last: ${oc.env:SAVE_LAST, false}
+          save_top_k: 1
+          monitor: &MONITOR_METRIC ${oc.env:MONITOR_METRIC, val/MulticlassAccuracy}
+          mode: &MONITOR_METRIC_MODE ${oc.env:MONITOR_METRIC_MODE, max}
+      - class_path: lightning.pytorch.callbacks.EarlyStopping
+        init_args:
+          min_delta: 0
+          patience: ${oc.env:PATIENCE, 1250}
+          monitor: *MONITOR_METRIC
+          mode: *MONITOR_METRIC_MODE
+    logger:
+      - class_path: lightning.pytorch.loggers.TensorBoardLogger
+        init_args:
+          save_dir: ${oc.env:OUTPUT_ROOT, logs/cv/${oc.env:MODEL_NAME, model}}/${oc.env:FOLD_COLUMN, fold0}
+          name: ""
+model:
+  class_path: eva.HeadModule
+  init_args:
+    head:
+      class_path: torch.nn.Linear
+      init_args:
+        in_features: ${oc.env:IN_FEATURES, 768}
+        out_features: &NUM_CLASSES ${oc.env:NUM_CLASSES, 4}
+    criterion: torch.nn.CrossEntropyLoss
+    optimizer:
+      class_path: torch.optim.AdamW
+      init_args:
+        lr: ${oc.env:LR_VALUE, 0.0003}
+    metrics:
+      common:
+        - class_path: eva.metrics.AverageLoss
+        - class_path: eva.metrics.MulticlassClassificationMetrics
+          init_args:
+            num_classes: *NUM_CLASSES
+data:
+  class_path: eva.DataModule
+  init_args:
+    datasets:
+      train:
+        class_path: eva.datasets.EmbeddingsClassificationDataset
+        init_args: &DATASET_ARGS
+          root: ${oc.env:EMBEDDINGS_ROOT, ./data/embeddings}
+          manifest_file: ${oc.env:MANIFEST_FILE, manifest_cv.csv}
+          split: train
+          # Point eva's "split" at this fold's column -> train/val membership.
+          column_mapping:
+            split: ${oc.env:FOLD_COLUMN, fold0}
+      val:
+        class_path: eva.datasets.EmbeddingsClassificationDataset
+        init_args:
+          <<: *DATASET_ARGS
+          split: val
+    dataloaders:
+      train:
+        batch_size: &BATCH_SIZE ${oc.env:BATCH_SIZE, 256}
+        num_workers: &N_DATA_WORKERS ${oc.env:N_DATA_WORKERS, 4}
+        shuffle: true
+      val:
+        batch_size: *BATCH_SIZE
+        num_workers: *N_DATA_WORKERS

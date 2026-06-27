@@ -84,3 +84,32 @@ def test_load_raises_when_no_backbone_weights(tmp_path):
         assert False, "expected KeyError"
     except KeyError:
         pass
+
+
+def test_eva_registry_builder_returns_cls_backbone(tmp_path, monkeypatch):
+    # The eva-registry factory must load a checkpoint via CHECKPOINT_PATH and
+    # return the same [B, 768] CLS interface eva's pathology backbones expose.
+    # No eva / GPU needed: inject a fake DINOv2 and a fake checkpoint.
+    from distill.eval import eva_registry
+    import distill.eval.student_backbone as sb
+
+    src = FakeBackbone()
+    state = {f"student.model.{k}": v for k, v in src.state_dict().items()}
+    ckpt = tmp_path / "patho.ckpt"
+    torch.save({"state_dict": state}, ckpt)
+    monkeypatch.setenv("CHECKPOINT_PATH", str(ckpt))
+
+    # Patch the loader so we don't reach torch.hub for the real DINOv2 weights.
+    real_load = sb.load_student_backbone
+    monkeypatch.setattr(
+        eva_registry,
+        "load_student_backbone",
+        lambda checkpoint_path, normalize=False: real_load(
+            checkpoint_path=checkpoint_path, backbone=FakeBackbone(), normalize=normalize
+        ),
+    )
+
+    # eva may thread out_indices / extra kwargs through; they must be ignored.
+    model = eva_registry.build_patho_distill(out_indices=(0,), unused="x")
+    out = model(torch.rand(2, 3, 224, 224))
+    assert out.shape == (2, EMBED_DIM)
