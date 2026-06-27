@@ -209,8 +209,8 @@ linear-probe the \texttt{CLS} embedding, while CAMELYON16~\cite{camelyon16} (sli
 metastasis detection) aggregates the patch-token embeddings via attention-based multiple-instance
 learning. The same protocol is applied to each encoder for comparison. For BACH and MHIST we report, over
 five runs as produced by \texttt{eva}, the average multiclass accuracy (BACH) and binary balanced
-accuracy (MHIST); the slide-level CAMELYON16 probe is a single train/test run. In each column the
-best result is shown in \textbf{bold} and the second-best is \underline{underlined}.
+accuracy (MHIST); the slide-level CAMELYON16 probe is a single train/test run. The best result in
+each column is in \textbf{bold}.
 
 Given the limited training corpus and a student roughly an order of magnitude smaller than each
 teacher, we do not expect the student to surpass the strongest teacher on any single task; the
@@ -228,17 +228,13 @@ UNI2-h.
 Model & Params & BACH (\%) & MHIST (\%) & CAMELYON16 (\%) \\
 \midrule
 UNI2-h~\cite{uni}        & 681\,M & \textbf{91.46 $\pm$ 0.29} & 82.27 $\pm$ 0.11 & 88.37 \\
-Virchow2~\cite{virchow2} & 632\,M & \underline{88.00 $\pm$ 0.76} & \textbf{86.11 $\pm$ 0.05} & \textbf{96.12} \\
+Virchow2~\cite{virchow2} & 632\,M & 88.00 $\pm$ 0.76 & \textbf{86.11 $\pm$ 0.05} & \textbf{96.12} \\
 H-optimus-1~\cite{hoptimus} & 1.1\,B & 78.07 $\pm$ 0.70 & 83.79 $\pm$ 0.13 & 92.25 \\
 \midrule
-Student (ours)           & 86.6\,M & 85.16 $\pm$ 0.54 & \underline{84.39 $\pm$ 0.04} & \underline{93.80} \\
+Student (ours)           & 86.6\,M & 85.16 $\pm$ 0.54 & 84.39 $\pm$ 0.04 & 93.80 \\
 \bottomrule
 \end{tabular}
 \end{center}
-
-{\footnotesize\itshape All encoders are benchmarked under the identical \texttt{eva} protocol, so
-student and teachers are directly comparable. A companion notebook (\texttt{demo.ipynb}) gives a
-self-contained, CPU-only reproduction of the loss and linear-probe pipeline.}
 
 % =====================  REFERENCES  =====================
 \vspace{2pt}\hrule\vspace{2pt}
